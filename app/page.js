@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 const sprite = (id) =>
   `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`;
 
+const norm = (t) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
 export default function Page() {
   const [mons, setMons] = useState([]);
   const [owned, setOwned] = useState(new Set());
@@ -35,17 +37,29 @@ export default function Page() {
     }
   }
 
-  useEffect(() => {
-    fetch("https://pokeapi.co/api/v2/pokemon-species?limit=2000")
-      .then((r) => r.json())
-      .then((d) =>
-        setMons(
-          d.results
-            .map((s) => ({ id: Number(s.url.match(/(\d+)\/$/)[1]), name: s.name }))
-            .sort((a, b) => a.id - b.id)
-        )
-      )
-      .catch(() => setMsg("Liste des Pokémon indisponible (PokéAPI)."));
+    useEffect(() => {
+    (async () => {
+      try {
+        const d = await fetch("https://pokeapi.co/api/v2/pokemon-species?limit=2000").then((r) => r.json());
+        const list = d.results
+          .map((s) => ({ id: Number(s.url.match(/(\d+)\/$/)[1]), name: s.name }))
+          .sort((a, b) => a.id - b.id);
+        setMons(list);
+        try {
+          const g = await fetch("https://beta.pokeapi.co/graphql/v1beta", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              query: "{ pokemon_v2_pokemonspeciesname(where: {language_id: {_eq: 5}}) { pokemon_species_id name } }",
+            }),
+          }).then((r) => r.json());
+          const fr = new Map(g.data.pokemon_v2_pokemonspeciesname.map((n) => [n.pokemon_species_id, n.name]));
+          setMons(list.map((m) => ({ ...m, name: fr.get(m.id) || m.name })));
+        } catch {}
+      } catch {
+        setMsg("Liste des Pokémon indisponible (PokéAPI).");
+      }
+    })();
     load();
   }, []);
 
@@ -76,11 +90,11 @@ export default function Page() {
   }
 
   const shown = useMemo(() => {
-    const s = q.trim().toLowerCase();
+        const s = norm(q.trim());
     return mons.filter(
       (m) =>
         (filter === "all" || (filter === "owned") === owned.has(m.id)) &&
-        (!s || m.name.includes(s) || String(m.id) === s)
+              (!s || norm(m.name).includes(s) || String(m.id) === s)
     );
   }, [mons, owned, filter, q]);
 
