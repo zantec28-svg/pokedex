@@ -1,15 +1,72 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const sprite = (id) =>
-  `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`;
-
+const sprite = (f) =>
+  `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${f}.png`;
 const norm = (t) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI"];
+
+const CATS = [
+  ["regional", "Formes régionales"],
+  ["mega", "Méga et Primo"],
+  ["gmax", "Gigamax"],
+  ["other", "Autres formes"],
+  ["zarbi", "Zarbi"],
+];
+const LABELS = {
+  alola: "Alola", galar: "Galar", hisui: "Hisui", paldea: "Paldea",
+  mega: "Méga", "mega-x": "Méga X", "mega-y": "Méga Y", gmax: "Gigamax",
+  primal: "Primo", eternamax: "Éternamax",
+};
+// Formes ignorées : Totems, casquettes / cosplay de Pikachu, Pikachu et Évoli de départ
+const SKIP = /totem|cosplay|(^|-)cap$|starter|rock-star|belle|pop-star|phd|libre/;
+
+function classify(suffix) {
+  if (/^(alola|galar|hisui|paldea)/.test(suffix)) return "regional";
+  if (/^(mega|primal)/.test(suffix)) return "mega";
+  if (/gmax$/.test(suffix)) return "gmax";
+  return "other";
+}
+
+const genOf = (id) => [151, 251, 386, 493, 649, 721, 809, 905, 1025].findIndex((m) => id <= m) + 1 || 10;
+
+const QUERY = `{
+  species: pokemon_v2_pokemonspecies(order_by: {id: asc}) {
+    id name generation_id
+    names: pokemon_v2_pokemonspeciesnames(where: {language_id: {_eq: 5}}) { name }
+    varieties: pokemon_v2_pokemons(where: {is_default: {_eq: false}}, order_by: {id: asc}) { id name }
+  }
+}`;
+
+function build(species) {
+  const list = [];
+  for (const s of species) {
+    const fr = s.names[0]?.name || s.name;
+    const base = { sid: s.id, gen: s.generation_id };
+    list.push({ ...base, key: String(s.id), name: fr, cat: "base", img: String(s.id) });
+    for (const v of s.varieties) {
+      const suffix = v.name.slice(s.name.length + 1);
+      if (!suffix || SKIP.test(suffix)) continue;
+      list.push({
+        ...base, key: "v" + v.id, img: String(v.id), cat: classify(suffix),
+        name: `${fr} (${LABELS[suffix] || suffix.replace(/-/g, " ")})`,
+      });
+    }
+    if (s.id === 201) {
+      for (const c of [..."abcdefghijklmnopqrstuvwxyz", "exclamation", "question"]) {
+        const sym = c === "exclamation" ? "!" : c === "question" ? "?" : c.toUpperCase();
+        list.push({ ...base, key: "u-" + c, name: `Zarbi ${sym}`, cat: "zarbi", img: c === "a" ? "201" : `201-${c}` });
+      }
+    }
+  }
+  return list;
+}
 
 export default function Page() {
-  const [mons, setMons] = useState([]);
+  const [entries, setEntries] = useState([]);
   const [owned, setOwned] = useState(new Set());
   const [filter, setFilter] = useState("all");
+  const [cats, setCats] = useState(new Set(CATS.map((c) => c[0])));
   const [q, setQ] = useState("");
   const [locked, setLocked] = useState(false);
   const [pinInput, setPinInput] = useState("");
@@ -37,39 +94,40 @@ export default function Page() {
     }
   }
 
-    useEffect(() => {
+  useEffect(() => {
     (async () => {
       try {
-        const d = await fetch("https://pokeapi.co/api/v2/pokemon-species?limit=2000").then((r) => r.json());
-        const list = d.results
-          .map((s) => ({ id: Number(s.url.match(/(\d+)\/$/)[1]), name: s.name }))
-          .sort((a, b) => a.id - b.id);
-        setMons(list);
-        try {
-          const g = await fetch("https://beta.pokeapi.co/graphql/v1beta", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              query: "{ pokemon_v2_pokemonspeciesname(where: {language_id: {_eq: 5}}) { pokemon_species_id name } }",
-            }),
-          }).then((r) => r.json());
-          const fr = new Map(g.data.pokemon_v2_pokemonspeciesname.map((n) => [n.pokemon_species_id, n.name]));
-          setMons(list.map((m) => ({ ...m, name: fr.get(m.id) || m.name })));
-        } catch {}
+        const g = await fetch("https://beta.pokeapi.co/graphql/v1beta", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ query: QUERY }),
+        }).then((r) => r.json());
+        setEntries(build(g.data.species));
       } catch {
-        setMsg("Liste des Pokémon indisponible (PokéAPI).");
+        try {
+          const d = await fetch("https://pokeapi.co/api/v2/pokemon-species?limit=2000").then((r) => r.json());
+          setEntries(
+            d.results
+              .map((s) => ({ sid: Number(s.url.match(/(\d+)\/$/)[1]), name: s.name }))
+              .sort((a, b) => a.sid - b.sid)
+              .map((s) => ({ ...s, key: String(s.sid), cat: "base", gen: genOf(s.sid), img: String(s.sid) }))
+          );
+          setMsg("Noms français et formes indisponibles pour le moment.");
+        } catch {
+          setMsg("Liste des Pokémon indisponible (PokéAPI).");
+        }
       }
     })();
     load();
   }, []);
 
-  async function toggle(id) {
-    const has = owned.has(id);
+  async function toggle(key) {
+    const has = owned.has(key);
     const next = new Set(owned);
-    has ? next.delete(id) : next.add(id);
+    has ? next.delete(key) : next.add(key);
     setOwned(next);
     try {
-      await api("POST", { ids: [id], owned: !has });
+      await api("POST", { ids: [key], owned: !has });
     } catch {
       setOwned(owned);
       setMsg("Échec de l'enregistrement, réessaie.");
@@ -78,7 +136,7 @@ export default function Page() {
 
   async function importCsv(file) {
     const text = await file.text();
-    const ids = text.split(/\r?\n/).map((l) => parseInt(l.split(/[;,\t]/)[0], 10)).filter((n) => n > 0);
+    const ids = text.split(/\r?\n/).map((l) => parseInt(l.split(/[;,\t]/)[0], 10)).filter((n) => n > 0).map(String);
     if (!ids.length) return setMsg("Aucun numéro trouvé dans la première colonne.");
     try {
       await api("POST", { ids, owned: true });
@@ -89,33 +147,39 @@ export default function Page() {
     }
   }
 
-  const shown = useMemo(() => {
-        const s = norm(q.trim());
-    return mons.filter(
-      (m) =>
-        (filter === "all" || (filter === "owned") === owned.has(m.id)) &&
-              (!s || norm(m.name).includes(s) || String(m.id) === s)
-    );
-  }, [mons, owned, filter, q]);
+  function toggleCat(c) {
+    const n = new Set(cats);
+    n.has(c) ? n.delete(c) : n.add(c);
+    setCats(n);
+  }
 
-  const total = mons.length;
-  const pct = total ? Math.round((owned.size / total) * 100) : 0;
+  const { sections, baseGot, baseTotal, formGot, formTotal } = useMemo(() => {
+    const s = norm(q.trim());
+    const map = new Map();
+    let baseGot = 0, baseTotal = 0, formGot = 0, formTotal = 0;
+    for (const e of entries) {
+      const has = owned.has(e.key);
+      if (e.cat === "base") { baseTotal++; if (has) baseGot++; }
+      else if (cats.has(e.cat)) { formTotal++; if (has) formGot++; }
+      else continue;
+      const g = map.get(e.gen) || { gen: e.gen, all: 0, got: 0, items: [] };
+      g.all++;
+      if (has) g.got++;
+      if ((filter === "all" || (filter === "owned") === has) && (!s || norm(e.name).includes(s) || String(e.sid) === s)) g.items.push(e);
+      map.set(e.gen, g);
+    }
+    const sections = [...map.values()].filter((g) => g.items.length).sort((a, b) => a.gen - b.gen);
+    return { sections, baseGot, baseTotal, formGot, formTotal };
+  }, [entries, owned, filter, cats, q]);
+
+  const pct = baseTotal ? Math.round((baseGot / baseTotal) * 100) : 0;
 
   if (locked) {
     return (
       <main className="lock">
         <h1>Code d'accès</h1>
-        <input
-          type="password"
-          value={pinInput}
-          onChange={(e) => setPinInput(e.target.value)}
-          aria-label="Code d'accès"
-        />
-        <button
-          onClick={() => { localStorage.setItem("pin", pinInput); load(); }}
-        >
-          Entrer
-        </button>
+        <input type="password" value={pinInput} onChange={(e) => setPinInput(e.target.value)} aria-label="Code d'accès" />
+        <button onClick={() => { localStorage.setItem("pin", pinInput); load(); }}>Entrer</button>
       </main>
     );
   }
@@ -126,52 +190,47 @@ export default function Page() {
         <div className="top">
           <h1>Pokédex en cartes</h1>
           <p className="count">
-            <strong>{owned.size}</strong> / {total || "…"} cartes · {pct} %
+            <strong>{baseGot}</strong> / {baseTotal || "…"} Pokémon · {pct} %
+            {formTotal > 0 && <> · formes <strong>{formGot}</strong> / {formTotal}</>}
           </p>
         </div>
         <div className="bar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
           <span style={{ width: `${pct}%` }} />
         </div>
         <div className="tools">
-          <input
-            type="search"
-            placeholder="Nom ou numéro"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            aria-label="Rechercher"
-          />
+          <input type="search" placeholder="Nom ou numéro" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Rechercher" />
           {[["all", "Tous"], ["owned", "Obtenus"], ["missing", "Manquants"]].map(([k, l]) => (
-            <button key={k} className={filter === k ? "on" : ""} onClick={() => setFilter(k)}>
-              {l}
-            </button>
+            <button key={k} className={filter === k ? "on" : ""} onClick={() => setFilter(k)}>{l}</button>
           ))}
           <button onClick={() => fileRef.current.click()}>Importer un CSV</button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".csv,text/csv,text/plain"
-            hidden
-            onChange={(e) => e.target.files[0] && importCsv(e.target.files[0])}
-          />
+          <input ref={fileRef} type="file" accept=".csv,text/csv,text/plain" hidden onChange={(e) => e.target.files[0] && importCsv(e.target.files[0])} />
+        </div>
+        <div className="tools chips" role="group" aria-label="Formes à afficher">
+          {CATS.map(([k, l]) => (
+            <button key={k} aria-pressed={cats.has(k)} className={cats.has(k) ? "on" : ""} onClick={() => toggleCat(k)}>{l}</button>
+          ))}
         </div>
         {msg && <p className="msg" onClick={() => setMsg("")}>{msg}</p>}
       </header>
 
-      <ul className="grid">
-        {shown.map((m) => (
-          <li key={m.id}>
-            <button
-              className={owned.has(m.id) ? "card has" : "card"}
-              aria-pressed={owned.has(m.id)}
-              onClick={() => toggle(m.id)}
-            >
-              <img src={sprite(m.id)} alt="" loading="lazy" width="96" height="96" />
-              <span className="num">{String(m.id).padStart(4, "0")}</span>
-              <span className="name">{m.name}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
+      {sections.map((g) => (
+        <section key={g.gen}>
+          <h2>
+            Génération {ROMAN[g.gen] || g.gen} <span>{g.got} / {g.all}</span>
+          </h2>
+          <ul className="grid">
+            {g.items.map((e) => (
+              <li key={e.key}>
+                <button className={owned.has(e.key) ? "card has" : "card"} aria-pressed={owned.has(e.key)} onClick={() => toggle(e.key)}>
+                  <img src={sprite(e.img)} alt="" loading="lazy" width="96" height="96" onError={(ev) => (ev.currentTarget.style.visibility = "hidden")} />
+                  <span className="num">{String(e.sid).padStart(4, "0")}</span>
+                  <span className="name">{e.name}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
     </main>
   );
 }
