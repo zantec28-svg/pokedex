@@ -1,4 +1,4 @@
-# Pokédex en cartes
+# Pokédex 
 
 1 carte par Pokémon, cochée depuis n'importe quel appareil. Next.js + Neon Postgres (via Vercel).
 
