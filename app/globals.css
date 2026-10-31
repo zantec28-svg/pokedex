@@ -8,17 +8,21 @@ header { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 1
 .top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 h1 { font-size: 1.3rem; margin: 0; }
 .count { margin: 0; color: var(--muted); }
-.count strong { color: var(--ink); font-size: 1.2rem; }
+.count strong { color: var(--ink); font-size: 1.1rem; }
 .bar { height: 8px; background: #cdd5e0; border-radius: 4px; margin: 8px 0; overflow: hidden; }
 .bar span { display: block; height: 100%; background: var(--ok); transition: width .3s; }
 .tools { display: flex; gap: 6px; flex-wrap: wrap; }
+.chips { margin-top: 6px; }
+.chips button { padding: 5px 10px; font-size: .85rem; }
 .tools input[type="search"], .lock input { flex: 1 1 140px; padding: 8px 10px; border: 1px solid #b9c3d3; border-radius: 6px; font: inherit; }
 button { font: inherit; cursor: pointer; }
 .tools button, .lock button { padding: 8px 12px; border: 1px solid #b9c3d3; border-radius: 6px; background: var(--sleeve); color: var(--ink); }
 .tools button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .msg { margin: 8px 0 0; color: var(--accent); cursor: pointer; }
-.grid { list-style: none; margin: 14px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
-.card { width: 100%; display: flex; flex-direction: column; align-items: center; padding: 8px 4px 6px; background: var(--sleeve); border: 2px solid transparent; border-radius: 8px; color: var(--muted); }
+section h2 { margin: 22px 0 0; font-size: 1.05rem; display: flex; align-items: baseline; gap: 10px; }
+section h2 span { font-size: .85rem; font-weight: 400; color: var(--muted); }
+.grid { list-style: none; margin: 10px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+.card { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; padding: 8px 4px 6px; background: var(--sleeve); border: 2px solid transparent; border-radius: 8px; color: var(--muted); }
 .card img { filter: grayscale(1) brightness(.85); opacity: .4; image-rendering: pixelated; }
 .card.has { border-color: var(--ok); color: var(--ink); }
 .card.has img { filter: none; opacity: 1; }
