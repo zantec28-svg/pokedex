@@ -70,6 +70,7 @@ export default function Page() {
   const [q, setQ] = useState("");
   const [canEdit, setCanEdit] = useState(false);
   const [showPin, setShowPin] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   const [pinInput, setPinInput] = useState("");
   const [msg, setMsg] = useState("");
   const fileRef = useRef(null);
@@ -191,6 +192,8 @@ export default function Page() {
 
   const gens = useMemo(() => [...new Set(entries.map((e) => e.gen))].sort((a, b) => a - b), [entries]);
 
+  const activeCount = (filter !== "all") + (genFilter ? 1 : 0) + (cats.size < CATS.length ? 1 : 0);
+
   const pct = baseTotal ? Math.round((baseGot / baseTotal) * 100) : 0;
 
   return (
@@ -208,9 +211,9 @@ export default function Page() {
         </div>
         <div className="tools">
           <input type="search" placeholder="Nom ou numéro" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Rechercher" />
-          {[["all", "Tous"], ["owned", "Obtenus"], ["missing", "Manquants"]].map(([k, l]) => (
-            <button key={k} className={filter === k ? "on" : ""} onClick={() => setFilter(k)}>{l}</button>
-          ))}
+          <button className={showFilters || activeCount ? "on" : ""} aria-expanded={showFilters} onClick={() => setShowFilters(!showFilters)}>
+            Filtres{activeCount ? ` (${activeCount})` : ""}
+          </button>
           {canEdit ? (
             <>
               <button onClick={() => fileRef.current.click()}>Importer un CSV</button>
@@ -220,6 +223,13 @@ export default function Page() {
           ) : (
             <button onClick={() => setShowPin(!showPin)}>Modifier</button>
           )}
+        </div>
+        {showFilters && (
+        <div className="panel">
+        <div className="tools chips" role="group" aria-label="Affichage">
+          {[["all", "Tous"], ["owned", "Obtenus"], ["missing", "Manquants"]].map(([k, l]) => (
+            <button key={k} className={filter === k ? "on" : ""} aria-pressed={filter === k} onClick={() => setFilter(k)}>{l}</button>
+          ))}
         </div>
         <div className="tools chips" role="group" aria-label="Formes à afficher">
           {CATS.map(([k, l]) => (
@@ -235,6 +245,8 @@ export default function Page() {
               </button>
             ))}
           </div>
+        )}
+        </div>
         )}
         {showPin && !canEdit && (
           <div className="tools chips">
