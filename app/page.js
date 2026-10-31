@@ -8,8 +8,6 @@ const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", 
 
 const CATS = [
   ["regional", "Formes régionales"],
-  ["mega", "Méga et Primo"],
-  ["gmax", "Gigamax"],
   ["other", "Autres formes"],
   ["zarbi", "Zarbi"],
 ];
@@ -23,8 +21,7 @@ const SKIP = /totem|cosplay|(^|-)cap$|starter|rock-star|belle|pop-star|phd|libre
 
 function classify(suffix) {
   if (/^(alola|galar|hisui|paldea)/.test(suffix)) return "regional";
-  if (/^(mega|primal)/.test(suffix)) return "mega";
-  if (/gmax$/.test(suffix)) return "gmax";
+  if (/^(mega|primal|eternamax)|gmax$/.test(suffix)) return null; // Méga, Primo, Gigamax : non suivis
   return "other";
 }
 
@@ -47,8 +44,10 @@ function build(species) {
     for (const v of s.varieties) {
       const suffix = v.name.slice(s.name.length + 1);
       if (!suffix || SKIP.test(suffix)) continue;
+      const cat = classify(suffix);
+      if (!cat) continue;
       list.push({
-        ...base, key: "v" + v.id, img: String(v.id), cat: classify(suffix),
+        ...base, key: "v" + v.id, img: String(v.id), cat,
         name: `${fr} (${LABELS[suffix] || suffix.replace(/-/g, " ")})`,
       });
     }
@@ -67,6 +66,7 @@ export default function Page() {
   const [owned, setOwned] = useState(new Set());
   const [filter, setFilter] = useState("all");
   const [cats, setCats] = useState(new Set(CATS.map((c) => c[0])));
+  const [genFilter, setGenFilter] = useState(0);
   const [q, setQ] = useState("");
   const [locked, setLocked] = useState(false);
   const [pinInput, setPinInput] = useState("");
@@ -165,12 +165,14 @@ export default function Page() {
       const g = map.get(e.gen) || { gen: e.gen, all: 0, got: 0, items: [] };
       g.all++;
       if (has) g.got++;
-      if ((filter === "all" || (filter === "owned") === has) && (!s || norm(e.name).includes(s) || String(e.sid) === s)) g.items.push(e);
+      if ((!genFilter || e.gen === genFilter) && (filter === "all" || (filter === "owned") === has) && (!s || norm(e.name).includes(s) || String(e.sid) === s)) g.items.push(e);
       map.set(e.gen, g);
     }
     const sections = [...map.values()].filter((g) => g.items.length).sort((a, b) => a.gen - b.gen);
     return { sections, baseGot, baseTotal, formGot, formTotal };
-  }, [entries, owned, filter, cats, q]);
+  }, [entries, owned, filter, cats, genFilter, q]);
+
+  const gens = useMemo(() => [...new Set(entries.map((e) => e.gen))].sort((a, b) => a - b), [entries]);
 
   const pct = baseTotal ? Math.round((baseGot / baseTotal) * 100) : 0;
 
@@ -210,6 +212,16 @@ export default function Page() {
             <button key={k} aria-pressed={cats.has(k)} className={cats.has(k) ? "on" : ""} onClick={() => toggleCat(k)}>{l}</button>
           ))}
         </div>
+        {gens.length > 1 && (
+          <div className="tools chips" role="group" aria-label="Génération">
+            <button className={!genFilter ? "on" : ""} aria-pressed={!genFilter} onClick={() => setGenFilter(0)}>Toutes les générations</button>
+            {gens.map((g) => (
+              <button key={g} className={genFilter === g ? "on" : ""} aria-pressed={genFilter === g} onClick={() => setGenFilter(g)}>
+                Gén. {ROMAN[g] || g}
+              </button>
+            ))}
+          </div>
+        )}
         {msg && <p className="msg" onClick={() => setMsg("")}>{msg}</p>}
       </header>
 
