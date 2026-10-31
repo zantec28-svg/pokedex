@@ -20,14 +20,14 @@ function init() {
 
 function authorized(req) {
   const pin = process.env.APP_PIN;
-  return !pin || req.headers.get("x-pin") === pin;
+  return Boolean(pin) && req.headers.get("x-pin") === pin;
 }
 
 export async function GET(req) {
-  if (!authorized(req)) return Response.json({ error: "pin" }, { status: 401 });
+  // Lecture ouverte à tous ; canEdit indique si le code fourni est le bon
   await init();
   const rows = await sql`SELECT key FROM owned_cards`;
-  return Response.json({ ids: rows.map((r) => r.key) });
+  return Response.json({ ids: rows.map((r) => r.key), canEdit: authorized(req) });
 }
 
 // Body : { ids: ["25", "v10001", "u-b"], owned: true | false }
