@@ -2,7 +2,7 @@ import { neon } from "@neondatabase/serverless";
 
 export const dynamic = "force-dynamic";
 
-const sql = neon(process.env.DATABASE_URL);
+const sql = (...args) => neon(process.env.DATABASE_URL)(...args);
 
 async function init() {
   await sql`CREATE TABLE IF NOT EXISTS owned (id INT PRIMARY KEY)`;
