@@ -30,3 +30,4 @@ section h2 span { font-size: .85rem; font-weight: 400; color: var(--muted); }
 .name { font-size: .82rem; text-transform: capitalize; text-align: center; overflow-wrap: anywhere; }
 :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .lock { max-width: 320px; margin: 20vh auto; display: flex; flex-direction: column; gap: 10px; }
+.card:disabled { cursor: default; }
