@@ -68,7 +68,8 @@ export default function Page() {
   const [cats, setCats] = useState(new Set(CATS.map((c) => c[0])));
   const [genFilter, setGenFilter] = useState(0);
   const [q, setQ] = useState("");
-  const [locked, setLocked] = useState(false);
+  const [canEdit, setCanEdit] = useState(false);
+  const [showPin, setShowPin] = useState(false);
   const [pinInput, setPinInput] = useState("");
   const [msg, setMsg] = useState("");
   const fileRef = useRef(null);
@@ -79,7 +80,7 @@ export default function Page() {
       headers: { "content-type": "application/json", "x-pin": localStorage.getItem("pin") || "" },
       body: body ? JSON.stringify(body) : undefined,
     });
-    if (r.status === 401) { setLocked(true); throw new Error("pin"); }
+    if (r.status === 401) { setCanEdit(false); throw new Error("pin"); }
     if (!r.ok) throw new Error("api");
     return r.json();
   }
@@ -87,11 +88,26 @@ export default function Page() {
   async function load() {
     try {
       const data = await api("GET");
-      setLocked(false);
+      setCanEdit(data.canEdit);
       setOwned(new Set(data.ids));
+      return data.canEdit;
     } catch (e) {
       if (e.message !== "pin") setMsg("Impossible de charger la collection.");
+      return false;
     }
+  }
+
+  async function unlock() {
+    localStorage.setItem("pin", pinInput);
+    const ok = await load();
+    if (ok) { setShowPin(false); setMsg(""); }
+    else { localStorage.removeItem("pin"); setMsg("Code incorrect."); }
+    setPinInput("");
+  }
+
+  function lock() {
+    localStorage.removeItem("pin");
+    setCanEdit(false);
   }
 
   useEffect(() => {
@@ -122,6 +138,7 @@ export default function Page() {
   }, []);
 
   async function toggle(key) {
+    if (!canEdit) return;
     const has = owned.has(key);
     const next = new Set(owned);
     has ? next.delete(key) : next.add(key);
@@ -176,16 +193,6 @@ export default function Page() {
 
   const pct = baseTotal ? Math.round((baseGot / baseTotal) * 100) : 0;
 
-  if (locked) {
-    return (
-      <main className="lock">
-        <h1>Code d'accès</h1>
-        <input type="password" value={pinInput} onChange={(e) => setPinInput(e.target.value)} aria-label="Code d'accès" />
-        <button onClick={() => { localStorage.setItem("pin", pinInput); load(); }}>Entrer</button>
-      </main>
-    );
-  }
-
   return (
     <main>
       <header>
@@ -204,8 +211,15 @@ export default function Page() {
           {[["all", "Tous"], ["owned", "Obtenus"], ["missing", "Manquants"]].map(([k, l]) => (
             <button key={k} className={filter === k ? "on" : ""} onClick={() => setFilter(k)}>{l}</button>
           ))}
-          <button onClick={() => fileRef.current.click()}>Importer un CSV</button>
-          <input ref={fileRef} type="file" accept=".csv,text/csv,text/plain" hidden onChange={(e) => e.target.files[0] && importCsv(e.target.files[0])} />
+          {canEdit ? (
+            <>
+              <button onClick={() => fileRef.current.click()}>Importer un CSV</button>
+              <input ref={fileRef} type="file" accept=".csv,text/csv,text/plain" hidden onChange={(e) => e.target.files[0] && importCsv(e.target.files[0])} />
+              <button onClick={lock}>Verrouiller</button>
+            </>
+          ) : (
+            <button onClick={() => setShowPin(!showPin)}>Modifier</button>
+          )}
         </div>
         <div className="tools chips" role="group" aria-label="Formes à afficher">
           {CATS.map(([k, l]) => (
@@ -222,6 +236,20 @@ export default function Page() {
             ))}
           </div>
         )}
+        {showPin && !canEdit && (
+          <div className="tools chips">
+            <input
+              type="password"
+              placeholder="Code d'accès"
+              value={pinInput}
+              onChange={(e) => setPinInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && unlock()}
+              aria-label="Code d'accès"
+              autoFocus
+            />
+            <button onClick={unlock}>Valider</button>
+          </div>
+        )}
         {msg && <p className="msg" onClick={() => setMsg("")}>{msg}</p>}
       </header>
 
@@ -233,7 +261,7 @@ export default function Page() {
           <ul className="grid">
             {g.items.map((e) => (
               <li key={e.key}>
-                <button className={owned.has(e.key) ? "card has" : "card"} aria-pressed={owned.has(e.key)} onClick={() => toggle(e.key)}>
+                <button className={owned.has(e.key) ? "card has" : "card"} disabled={!canEdit} aria-pressed={owned.has(e.key)} onClick={() => toggle(e.key)}>
                   <img src={sprite(e.img)} alt="" loading="lazy" width="96" height="96" onError={(ev) => (ev.currentTarget.style.visibility = "hidden")} />
                   <span className="num">{String(e.sid).padStart(4, "0")}</span>
                   <span className="name">{e.name}</span>
