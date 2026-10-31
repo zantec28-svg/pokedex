@@ -4,8 +4,18 @@ export const dynamic = "force-dynamic";
 
 const sql = (...args) => neon(process.env.DATABASE_URL)(...args);
 
-async function init() {
-  await sql`CREATE TABLE IF NOT EXISTS owned (id INT PRIMARY KEY)`;
+let ready;
+function init() {
+  ready ||= (async () => {
+    await sql`CREATE TABLE IF NOT EXISTS owned_cards (key TEXT PRIMARY KEY)`;
+    // Reprise automatique de l'ancienne table (numéros seuls), puis suppression
+    const old = await sql`SELECT to_regclass('public.owned') AS t`;
+    if (old[0].t) {
+      await sql`INSERT INTO owned_cards (key) SELECT id::text FROM owned ON CONFLICT DO NOTHING`;
+      await sql`DROP TABLE owned`;
+    }
+  })().catch((e) => { ready = null; throw e; });
+  return ready;
 }
 
 function authorized(req) {
@@ -16,21 +26,21 @@ function authorized(req) {
 export async function GET(req) {
   if (!authorized(req)) return Response.json({ error: "pin" }, { status: 401 });
   await init();
-  const rows = await sql`SELECT id FROM owned ORDER BY id`;
-  return Response.json({ ids: rows.map((r) => r.id) });
+  const rows = await sql`SELECT key FROM owned_cards`;
+  return Response.json({ ids: rows.map((r) => r.key) });
 }
 
-// Body : { ids: [1, 2, 3], owned: true | false }
+// Body : { ids: ["25", "v10001", "u-b"], owned: true | false }
 export async function POST(req) {
   if (!authorized(req)) return Response.json({ error: "pin" }, { status: 401 });
   const { ids, owned } = await req.json();
-  const clean = [...new Set((ids || []).map(Number))].filter((n) => Number.isInteger(n) && n > 0 && n < 5000);
+  const clean = [...new Set((ids || []).map(String))].filter((k) => /^[a-z0-9-]{1,24}$/i.test(k));
   if (!clean.length) return Response.json({ ok: true });
   await init();
   if (owned) {
-    await sql`INSERT INTO owned (id) SELECT unnest(${clean}::int[]) ON CONFLICT DO NOTHING`;
+    await sql`INSERT INTO owned_cards (key) SELECT unnest(${clean}::text[]) ON CONFLICT DO NOTHING`;
   } else {
-    await sql`DELETE FROM owned WHERE id = ANY(${clean}::int[])`;
+    await sql`DELETE FROM owned_cards WHERE key = ANY(${clean}::text[])`;
   }
   return Response.json({ ok: true });
 }
