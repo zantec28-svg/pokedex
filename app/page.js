@@ -27,13 +27,38 @@ function classify(suffix) {
 
 const genOf = (id) => [151, 251, 386, 493, 649, 721, 809, 905, 1025].findIndex((m) => id <= m) + 1 || 10;
 
-const QUERY = `{
-  species: pokemon_v2_pokemonspecies(order_by: {id: asc}) {
+// PokéAPI a migré son GraphQL vers graphql.pokeapi.co/v1beta2 (tables sans préfixe « pokemon_v2_ »).
+// L'ancien endpoint beta.pokeapi.co/graphql/v1beta est gardé en secours.
+const query = (p) => `{
+  species: ${p}pokemonspecies(order_by: {id: asc}) {
     id name generation_id
-    names: pokemon_v2_pokemonspeciesnames(where: {language_id: {_eq: 5}}) { name }
-    varieties: pokemon_v2_pokemons(where: {is_default: {_eq: false}}, order_by: {id: asc}) { id name }
+    names: ${p}pokemonspeciesnames(where: {language: {name: {_eq: "fr"}}}) { name }
+    varieties: ${p}pokemons(where: {is_default: {_eq: false}}, order_by: {id: asc}) { id name }
   }
 }`;
+const GRAPHQL = [
+  ["https://graphql.pokeapi.co/v1beta2", ""],
+  ["https://beta.pokeapi.co/graphql/v1beta", "pokemon_v2_"],
+];
+
+async function fetchSpecies() {
+  for (const [url, prefix] of GRAPHQL) {
+    try {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: query(prefix) }),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const g = await r.json();
+      if (g.errors?.length || !g.data?.species?.length) throw new Error(g.errors?.[0]?.message || "vide");
+      return g.data.species;
+    } catch (e) {
+      console.warn(`PokéAPI GraphQL ${url} :`, e.message);
+    }
+  }
+  throw new Error("graphql");
+}
 
 function build(species) {
   const list = [];
@@ -114,12 +139,7 @@ export default function Page() {
   useEffect(() => {
     (async () => {
       try {
-        const g = await fetch("https://beta.pokeapi.co/graphql/v1beta", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ query: QUERY }),
-        }).then((r) => r.json());
-        setEntries(build(g.data.species));
+        setEntries(build(await fetchSpecies()));
       } catch {
         try {
           const d = await fetch("https://pokeapi.co/api/v2/pokemon-species?limit=2000").then((r) => r.json());
